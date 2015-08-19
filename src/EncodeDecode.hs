@@ -4,99 +4,48 @@ import Term
 import Aux
 
 encode (Left a) = Left a
-encode (Right a) = Right (fst (encode' a []))
+encode (Right a) = Right (fst (rule1 a []))
 
-encode' (FVarApp x ts) cs = let (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = encode' t cs in (t':ts, cs')) ([], cs) ts
-                            in (FVarApp x ts', cs')
-encode' (BVarApp i ts) cs = let (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = encode' t cs in (t':ts, cs')) ([], cs) ts
-                            in ((BVarApp i ts'), cs')
-encode' (ConApp c ts) cs = let (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = encode' t cs in (t':ts, cs')) ([], cs) ts
-                            in ((ConApp c ts'), cs')
-encode' (Lambda x t) cs = let (t', cs') = encode' t cs
-                          in ((Lambda x t'), cs')
-encode' (Let x t1 t2) cs = encode' (subst (FVarApp x []) t2) cs
---encode' (Let x t1 t2) cs = let (t2', cs') = encode' t2 cs
---                           in ((Let x t1 t2'), cs')
-encode' (FunCall (f, ts)) cs = (FunCall ("encode_"++f, ts), cs)
-encode' (Where (f, ts) fds) cs = let f' = "encode_" ++ f
-                                     ts' = ts
-                                     (fds', cs') = let (fs, tss, ts) = unzip3 fds
-                                                       fs' = map ("encode_" ++) fs
-                                                       tss' = tss
-                                                       (ts', cs') = foldr (\ t (ts,cs) -> let (t', cs') = encode'' t cs in (t':ts, cs')) ([], cs) ts
-                                                   in (zip3 fs' tss' ts', cs')
-                                 in ((Where (f', ts') fds'), cs')
+--isRecursive (Where (f, ts) fds) = any (\(f,ts,t) -> hasFunCall f t) fds
+--isRecursive t = False
 
-encode'' (FVarApp x ts) cs = let c' = rename cs "C"
-                                 (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = encode' t cs in (t':ts, cs')) ([], c':cs) ((FVarApp x []):ts)
-                             in ((ConApp c' ts'), cs')
-encode'' (BVarApp i ts) cs = let c' = rename cs "C"
-                                 (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = encode' t cs in (t':ts, cs')) ([], c':cs) ((BVarApp i []):ts)
-                             in ((ConApp c' ts'), cs')
-encode'' (ConApp c ts) cs = let c' = rename cs "C"
-                                (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = encode' t cs in (t':ts, cs')) ([], c':cs) ts
-                             in ((ConApp c' ts'), cs')
-encode'' (Lambda x t) cs = let c' = rename cs "C"
-                               (t', cs') = encode' t (c':cs)
-                             in ((Lambda x t'), cs')
-encode'' (Let x t1 t2) cs = let c' = rename cs "C"
-                                (t2', cs') = encode'' (subst (FVarApp x []) t2) (c':cs)
-                            in (t2', cs')
-encode'' t cs = let c' = rename cs "C"
-                    (t', cs') = encode' t (c':cs)
-                in ((ConApp c' [t']), cs')
+hasFunCall f (FVarApp x ts) = any (hasFunCall f) ts
+hasFunCall f (BVarApp i ts) = any (hasFunCall f) ts
+hasFunCall f (ConApp c ts) = any (hasFunCall f) ts
+hasFunCall f (Lambda x t) = hasFunCall f t
+hasFunCall f (Let x t1 t2) = hasFunCall f t2
+hasFunCall f (FunCall (f', ts)) = (f == f') || (any (hasFunCall f) ts)
+hasFunCall f (Where (f', ts) fds) = any (\(f',ts,t) -> hasFunCall f t) fds
 
-{-|
-encode' (FVarApp x ts) cs = let (ts', cs') = encode'' (FVarApp x ts) cs
-                            in ((FVarApp x ts'), cs')
-encode' (BVarApp i ts) cs = let (ts', cs') = encode'' (BVarApp i ts) cs
-                            in ((BVarApp i ts'), cs')
-encode' (ConApp c ts) cs = let (ts', cs') = encode'' (ConApp c ts) cs
-                            in ((ConApp c ts'), cs')
-encode' (Lambda x t) cs = let (t', cs') = encode' t cs
-                          in ((Lambda x t'), cs')
-encode' (Let x t1 t2) cs = let (t2', cs') = encode' t2 cs
-                           in ((Let x t1 t2'), cs')
-encode' (FunCall (f, ts)) cs = (FunCall ("encode_"++f, ts), cs)
-encode' (Where (f, ts) fds) cs = let f' = "encode_" ++ f
-                                     ts' = ts
-                                     (fds', cs') = let (fs, tss, ts) = unzip3 fds
-                                                       fs' = map ("encode_" ++) fs
-                                                       tss' = tss
-                                                       (ts', cs') = foldr (\ t (ts,cs) -> let c' = rename cs "C"
-                                                                                              (ts', cs') = encode'' t (c':cs)
-                                                                                          in ((ConApp c' ts'):ts, cs')) ([], cs) ts
-                                                   in (zip3 fs' tss' ts', cs')
-                                 in ((Where (f', ts') fds'), cs')
+rule1 (FVarApp x ts) cs = let (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = rule1 t cs in (t':ts, cs')) ([],cs) ts
+                          in (FVarApp x ts', cs')
+rule1 (BVarApp i ts) cs = let (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = rule1 t cs in (t':ts, cs')) ([],cs) ts
+                          in (BVarApp i ts', cs')
+rule1 (ConApp c ts) cs = let (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = rule1 t cs in (t':ts, cs')) ([],cs) ts
+                         in (ConApp c ts', cs')
+rule1 (Lambda x t) cs = let (t', cs') = rule1 t cs
+                        in (Lambda x t', cs')
+rule1 (Let x t1 t2) cs = let (t2', cs') = rule1 t2 cs
+                         in (Let x t1 t2', cs')
+rule1 (FunCall (f, ts)) cs = let (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = rule1 t cs in (t':ts, cs')) ([],cs) ts
+                             in (FunCall (f, ts'), cs')
+rule1 t@(Where (f, ts) fds) cs = if (hasFunCall f t)
+                                 then let f' =  f ++ "_E"
+                                          ts' = [FunCall ("encode_" ++ f, ts)]
+                                          (fds', cs') = rule2 fds cs
+                                      in (Where (f', ts') fds', cs')
+                                 else let (fds', cs') = foldr (\(f,ts,t) (fds,cs) -> let (t',cs') = rule1 t cs in ((f,ts,t'):fds, cs')) ([],cs) fds
+                                      in (Where (f, ts) fds', cs')
 
 
-encode'' (FVarApp x ts) cs = let (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = encode' t cs in (t':ts, cs')) ([], cs) ts
-                             in (ts', cs')
-encode'' (BVarApp i ts) cs = let (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = encode' t cs in (t':ts, cs')) ([], cs) ts
-                             in (ts', cs')
-encode'' (ConApp c ts) cs = let (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = encode' t cs in (t':ts, cs')) ([], cs) ts
-                            in (ts', cs')
-encode'' (Lambda x t) cs = encode'' t cs
-encode'' (Let x t1 t2) cs = encode'' t2 cs
-encode'' t cs = let (t', cs') = encode' t cs
-                in ([t'], cs')
-|-}
+rule2 fds cs = rule2' fds cs []
 
-{-|encode' (FVarApp x ts) cs = let c' = rename cs "C"
-                                (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = encode' t cs in (t':ts, cs')) ([], c':cs) ts
-                            in ((ConApp c' ts'), cs')
-encode' (BVarApp i ts) cs = let c' = rename cs "C"
-                                (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = encode' t cs in (t':ts, cs')) ([], c':cs) ts
-                            in ((ConApp c' ts'), cs')
-encode' (ConApp c ts) cs = let c' = rename cs "C"
-                               (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = encode' t cs in (t':ts, cs')) ([], c':cs) ts
-                           in ((ConApp c' ts'), cs')
-encode' (Lambda x t) cs = encode' t cs
-encode' (Let x t1 t2) cs = encode' t2 cs
-encode' (FunCall (f, ts)) cs = let f' = "encode_" ++ f
-                                   (ts', cs') = foldr (\t (ts,cs) -> let (t',cs') = encode' t cs in (t':ts, cs')) ([], cs) ts
-                               in ((FunCall (f', ts')), cs')
-encode' (Where (f, ts) fds) cs = let f' = "encode_" ++ f
-                                     ts' = ts
-                                     (fds', cs') = foldr (\(f,ts,t) (fds,cs) -> let (t',cs') = encode' t cs in (("encode_"++f,ts,t'):fds, cs')) ([], cs) fds
-                                 in ((Where (f', ts') fds'), cs')|-}
+rule2' fds cs ps = foldr (\(f,ts,t) (fds,cs) -> let f' = f ++ "_E"
+                                                    c' = rename cs "C"
+                                                    as = rule3 t
+                                                    ts' = [ConApp c' as]
+                                                    ps' = (ts', c'):ps
+                                                    (t',cs') = rule1 t (c':cs)
+                                                in ((f',ts',t'):fds, cs')) ([], cs) fds
+
+rule3 t = []
